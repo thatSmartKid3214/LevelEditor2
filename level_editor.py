@@ -368,8 +368,8 @@ class Level_Editor:
 
         # Undo and redo
         self.logs = []
+        self.undo_logs = []
         self.log_data = []
-        self.log_index = 0
         self.undone = False
         self.redone = False
 
@@ -548,7 +548,7 @@ class Level_Editor:
         
         queue = Queue()
         
-        if f"{x}/{y}" in self.level[self.current_layer]:
+        if f"{x}/{y}" in self.level[self.current_layer]: # Flood filling already existing tiles
             old_tile = self.level[self.current_layer][f"{x}/{y}"][1]
             if old_tile == new_tile:
                 return
@@ -565,6 +565,7 @@ class Level_Editor:
                     continue
                 else:
                     self.level[self.current_layer][f"{_x}/{_y}"][1] = new_tile
+                    self.log_data.append([self.current_layer, f"{_x}/{_y}", self.level[self.current_layer][f"{_x}/{_y}"]])
                     queue.put([_x-1, _y])
                     queue.put([_x+1, _y])
                     queue.put([_x, _y-1])
@@ -582,10 +583,14 @@ class Level_Editor:
                     continue
                 else:
                     self.level[self.current_layer][f"{_x}/{_y}"] = [self.current_tileset, new_tile, [_x, _y]]
+                    self.log_data.append([self.current_layer, f"{_x}/{_y}", [self.current_tileset, new_tile, [_x, _y]]])
                     queue.put([_x-1, _y])
                     queue.put([_x+1, _y])
                     queue.put([_x, _y-1])
                     queue.put([_x, _y+1])
+        
+        self.log("placed", self.log_data)
+        self.log_data.clear()
 
     def check_neighbours(self, pos):
 
@@ -689,16 +694,14 @@ class Level_Editor:
         }
 
         self.logs.append(json.dumps(log))
-        self.log_index += 1
     
     def undo(self):
-        self.log_index -= 1
-
-        if self.log_index < 0:
-            self.log_index = 0
+        if len(self.logs) > 0:
+            l = self.logs.pop()
+            self.undo_logs.append(l)
+            log = json.loads(l)
+        else:
             return
-
-        log = json.loads(self.logs[self.log_index])
 
         log_type = log["type"]
         
@@ -713,15 +716,12 @@ class Level_Editor:
         self.undone = True
     
     def redo(self):
-        self.log_index += 1
-
-        if self.log_index >= len(self.logs):
-            self.log_index = len(self.logs)-1
+        if len(self.undo_logs) > 0:
+            l = self.undo_logs.pop()
+            self.logs.append(l)
+            log = json.loads(l)
+        else:
             return
-
-        print("redo")
-
-        log = json.loads(self.logs[self.log_index])
 
         log_type = log["type"]
         
@@ -787,8 +787,8 @@ class Level_Editor:
                         tile = [self.current_tileset, self.current_tile, tile_pos]
                         self.level[self.current_layer][tile_id] = tile
 
-                        if self.undone or self.redo:
-                            self.logs = self.logs[0:self.log_index]
+                        if self.undone or self.redone:
+                            self.undo_logs.clear()
                         
                         self.undone = False
                         self.redone = False
@@ -797,8 +797,8 @@ class Level_Editor:
                 
                 if self.right_clicking and not self.moving_selection and not self.object_mode and not self.tile_selection_mode:
 
-                    if self.undone or self.redo:
-                        self.logs = self.logs[0:self.log_index]
+                    if self.undone or self.redone:
+                        self.undo_logs.clear()
                         
                     self.undone = False
                     self.redone = False
